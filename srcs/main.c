@@ -34,32 +34,30 @@ char *reverse_dns_lookup(char *ip)
 
 char *dns_lookup(char *addr_host, struct sockaddr_in *addr_con) {
     struct hostent *host_entity;
-    char *ip = (char *)malloc(NI_MAXHOST * sizeof(char));
 
-    if ((host_entity = gethostbyname(addr_host)) == NULL) {
+    if ((host_entity = gethostbyname(addr_host)) == NULL)
         return (NULL);
-    }
+    char *ip = (char *)malloc(NI_MAXHOST * sizeof(char));
     strcpy(ip, inet_ntoa(*(struct in_addr *)host_entity->h_addr)); // Convert IP into string
     (*addr_con).sin_family = host_entity->h_addrtype;
     (*addr_con).sin_port = htons(0);
     (*addr_con).sin_addr.s_addr = *(long *)host_entity->h_addr; // Copy IP address from DNS to addr_con
-
     return ip;
 }
 
 char *create_icmp_packet(int sequence_number, int packet_size)
 {
 	char *packet;
-	struct icmp *icmp;
+	struct icmphdr *icmp;
 	packet = (char *)malloc(packet_size);
-	icmp = (struct icmp *)packet;
-	icmp->icmp_type = ICMP_ECHO;
-	icmp->icmp_code = 0;
-	icmp->icmp_cksum = 0;
-	icmp->icmp_seq = sequence_number;
-	icmp->icmp_id = getpid();
-	memset(icmp->icmp_data, 0, packet_size);
-	icmp->icmp_cksum = checksum((unsigned short *)packet, packet_size);
+	icmp = (struct icmphdr *)packet;
+	icmp->type = ICMP_ECHO;
+	icmp->code = 0;
+	icmp->checksum = 0;
+	icmp->un.echo.sequence = sequence_number;
+	icmp->un.echo.id = getpid();
+	memset(packet + sizeof(struct icmphdr) , 'A', packet_size - sizeof(struct icmphdr));
+	icmp->checksum = checksum((unsigned short *)packet, packet_size);
 	return (packet);
 }
 
@@ -79,9 +77,12 @@ char *create_udp_packet(int packet_size, int port)
 void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hostname, char *dest_ip, t_options *opts)
 {
 	int i = 0;
-	char *packet;
+	char *packet = NULL;
 	int retry = 3;
 	int packet_size = 84;
+	char *p = NULL;
+	char *ip = NULL;
+	struct timeval start_time, end_time;
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
@@ -96,9 +97,12 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		struct timeval tv_out;
 		tv_out.tv_sec = 3;
 		tv_out.tv_usec = 0;
+		gettimeofday(&start_time, NULL);
 		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
+			free(packet);
+			packet = NULL;
 			return;
 		}
 		fd_set readfds;
@@ -108,54 +112,60 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		if (ret == 0)
 		{
 			if (retry == 3)
-			{
 				printf("  %d\t*", ttl);
-				retry--;
-				ttl--;
-			}
-			else if (retry == 0)
-			{
-				printf("\n");
-				retry = 3;
-			}
 			else
-			{
-				retry--;
-				ttl--;
 				printf(" *");
-			}
 			fflush(stdout);
 		}
 		else
 		{
 			if (FD_ISSET(socket_fd, &readfds))
 			{
-				char *packet = malloc(64);
+				p = (char *)malloc(packet_size);
 				struct sockaddr_in r_addr;
 				socklen_t addr_len = sizeof(r_addr);
-				recvfrom(socket_fd, packet, 64, 0, (struct sockaddr *)&r_addr, &addr_len);
-				char *ip = inet_ntoa(r_addr.sin_addr);
-				char *hostname = reverse_dns_lookup(ip);
-				if (hostname == NULL)
+				recvfrom(socket_fd, p, packet_size, 0, (struct sockaddr *)&r_addr, &addr_len);
+				gettimeofday(&end_time, NULL);
+				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
+				ip = inet_ntoa(r_addr.sin_addr);
+				if (retry == 3)
 				{
-					if (strncmp(ip, dest_ip, strlen(dest_ip)) == 0)
-						hostname = ip;
+					if (opts->resolve_dns)
+					{
+						char *temp_host = reverse_dns_lookup(inet_ntoa(r_addr.sin_addr));
+						printf("  %d   %s (%s)  %.3fms", ttl, ip, temp_host, rtt_msec);
+						free(temp_host);
+					}
 					else
-						hostname = dest_ip;
+						printf("  %d   %s  %.3fms", ttl, ip, rtt_msec);
+					fflush(stdout);
 				}
-				if (opts->resolve_dns)
-					printf("  %d\t%s (%s)\n", ttl, hostname, ip);
 				else
-					printf("  %d\t%s\n", ttl, ip);
-				if (strncmp(ip, dest_ip, strlen(dest_ip)) == 0)
-				{
-					free(packet);
-					break;
-				}
-				free(packet);
+					printf("  %.3fms", rtt_msec);
+				free(p);
+				p = NULL;
 			}
 		}
+		if (retry > 0)
+		{
+			ttl--;
+			retry--;
+		}
+		if (retry == 0)
+		{
+			printf("\n");
+			if (strncmp(ip, dest_ip, strlen(dest_ip)) == 0)
+			{
+				free(packet);
+				FD_CLR(socket_fd, &readfds);
+				packet = NULL;
+				break;
+			}
+			retry = 3;
+			ttl++;
+		}
 		free(packet);
+		packet = NULL;
 		i++;
 	}
 }
@@ -167,7 +177,7 @@ int main(int ac, char **av)
 	struct sockaddr_in addr_con;
 	char *ip_addr;
 	char *hostname;
-	int socket_fd;
+	int socket_fd = -1;
 	if (ac < 2)
 	{
 		print_error("missing host operand");
