@@ -121,7 +121,6 @@ t_options *init_options()
 void print_error(char *msg)
 {
 	printf("traceroute: %s\n", msg);
-	exit(1);
 }
 
 void parse_fdqn(char **dest_addr)
