@@ -32,17 +32,28 @@ char *reverse_dns_lookup(char *ip)
 	return (ret_buf);
 }
 
-char *dns_lookup(char *addr_host, struct sockaddr_in *addr_con) {
-    struct hostent *host_entity;
-
-    if ((host_entity = gethostbyname(addr_host)) == NULL)
-        return (NULL);
-    char *ip = (char *)malloc(NI_MAXHOST * sizeof(char));
-    strcpy(ip, inet_ntoa(*(struct in_addr *)host_entity->h_addr)); // Convert IP into string
-    (*addr_con).sin_family = host_entity->h_addrtype;
-    (*addr_con).sin_port = htons(0);
-    (*addr_con).sin_addr.s_addr = *(long *)host_entity->h_addr; // Copy IP address from DNS to addr_con
-    return ip;
+char *dns_lookup(char *addr, struct sockaddr_in *addr_con)
+{
+	// get the ip address of the host from the hostname with getaddrinfo
+	struct addrinfo hints = {0}, *res = NULL;
+	int ret = 0;
+	char ip[INET_ADDRSTRLEN];
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	ret = getaddrinfo(addr, NULL, &hints, &res);
+	if (ret != 0)
+		return (NULL);
+	char *ret_buf = NULL;
+	struct addrinfo *p = res;
+	struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+	void *address = &(ipv4->sin_addr);
+	inet_ntop(p->ai_family, address, ip, sizeof(ip));
+	ret_buf = (char *)malloc((strlen(ip) + 1) * sizeof(char));
+	strcpy(ret_buf, ip);
+	memcpy(addr_con, ipv4, sizeof(struct sockaddr_in));
+	freeaddrinfo(res);
+	return (ret_buf);
 }
 
 char *create_icmp_packet(int sequence_number, int packet_size)
