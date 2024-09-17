@@ -209,6 +209,13 @@ int main(int ac, char **av)
 		free(options);
 		return (1);
 	}
+	if (getuid() != 0)
+	{
+		print_error("You must be root to use traceroute");
+		free(options);
+		free(ip_addr);
+		return (1);
+	}
 	if (options->method == 1)
 		socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	else
