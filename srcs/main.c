@@ -132,10 +132,10 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		{
 			if (FD_ISSET(socket_fd, &readfds))
 			{
-				p = (char *)malloc(packet_size);
+				p = (char *)malloc(0x10000);
 				struct sockaddr_in r_addr;
 				socklen_t addr_len = sizeof(r_addr);
-				recvfrom(socket_fd, p, packet_size, 0, (struct sockaddr *)&r_addr, &addr_len);
+				recvfrom(socket_fd, p, 0x10000, 0, (struct sockaddr *)&r_addr, &addr_len);
 				gettimeofday(&end_time, NULL);
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
 				ip = inet_ntoa(r_addr.sin_addr);
@@ -209,17 +209,18 @@ int main(int ac, char **av)
 		free(options);
 		return (1);
 	}
-	if (getuid() != 0)
-	{
-		print_error("You must be root to use traceroute");
-		free(options);
-		free(ip_addr);
-		return (1);
-	}
+
 	if (options->method == 1)
 		socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	else
 		socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+	if (socket_fd < 0)
+	{
+		print_error("Lack of privileges");
+		free(ip_addr);
+		free(options);
+		return (1);
+	}
 	ft_traceroute(socket_fd, &addr_con, hostname, ip_addr, options);
 	free(ip_addr);
 	free(options);
