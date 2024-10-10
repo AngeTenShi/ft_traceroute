@@ -116,7 +116,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 	int retry = 3;
 	int packet_size = 84;
 	char *p = NULL;
-	char *ip = NULL;
+	char ip[INET_ADDRSTRLEN];
 	struct timeval start_time, end_time;
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
@@ -191,6 +191,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		if (retry == 0)
 		{
 			printf("\n");
+
 			if (strncmp(ip, dest_ip, strlen(dest_ip)) == 0)
 			{
 				free(packet);
