@@ -79,6 +79,7 @@ char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr,
 	packet = (char *)malloc(packet_size);
 	udp = (struct udphdr *)packet;
 	udp->source = src_addr->sin_port;
+	printf("port sent from src: %d\n", ntohs(udp->source));
 	udp->dest = htons(port);  
 	udp->len = htons(packet_size);
 	udp->check = 0;
@@ -113,6 +114,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		fd_set readfds;
 		FD_ZERO(&readfds);
 		FD_SET(socket_fd, &readfds);
+		int ret = select(socket_fd + 1, &readfds, NULL, NULL, &tv_out);
 		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
@@ -120,7 +122,6 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = NULL;
 			return;
 		}
-		int ret = select(socket_fd + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
 			if (retry == 3)
@@ -224,6 +225,9 @@ int main(int ac, char **av)
 		free(options);
 		return (1);
 	}
+	addr_con.sin_family = AF_INET;
+	addr_con.sin_port = htons(0);
+	addr_con.sin_addr.s_addr = inet_addr(ip_addr);
 	ft_traceroute(socket_fd, &addr_con, hostname, ip_addr, options);
 	free(ip_addr);
 	free(options);
