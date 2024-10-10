@@ -77,35 +77,12 @@ char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr,
 	char *packet;
 	struct udphdr *udp;
 	packet = (char *)malloc(packet_size);
-	memset(packet, 0, packet_size);
 	udp = (struct udphdr *)packet;
-	udp->source = htons(port);
-	udp->dest = htons(dest_addr->sin_port);
+	udp->source = src_addr->sin_port;
+	udp->dest = rand() % 30000 + 30000;  
 	udp->len = htons(packet_size);
 	udp->check = 0;
-	struct pseudo_header
-	{
-		u_int32_t source_address;
-		u_int32_t dest_address;
-		u_int8_t placeholder;
-		u_int8_t protocol;
-		u_int16_t udp_length;
-	} pseudo_hdr;
-
-	pseudo_hdr.source_address = src_addr->sin_addr.s_addr;
-	pseudo_hdr.dest_address = dest_addr->sin_addr.s_addr;
-	pseudo_hdr.placeholder = 0;
-	pseudo_hdr.protocol = IPPROTO_UDP;
-	pseudo_hdr.udp_length = udp->len;
-
-	int pseudo_packet_size = sizeof(struct pseudo_header) + packet_size;
-	char *pseudo_packet = (char *)malloc(pseudo_packet_size);
-	memcpy(pseudo_packet, &pseudo_hdr, sizeof(struct pseudo_header));
-	memcpy(pseudo_packet + sizeof(struct pseudo_header), packet, packet_size);
-
-	udp->check = checksum((unsigned short *)pseudo_packet, pseudo_packet_size);
-	free(pseudo_packet);
-
+	memset(packet + sizeof(struct udphdr), 'A', packet_size - sizeof(struct udphdr));
 	return (packet);
 }
 
@@ -126,12 +103,11 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = create_icmp_packet(i, 84);
 		else
 		{
-			traceroute_addr->sin_port = htons(opts->port + i);
-			packet = create_udp_packet(60, opts->port + i, traceroute_addr, traceroute_addr);
-			packet_size = 60;
+			packet = create_udp_packet(32, opts->port, traceroute_addr, traceroute_addr);
+			packet_size = 40;
 		}
 		struct timeval tv_out;
-		tv_out.tv_sec = 0;
+		tv_out.tv_sec = 5;
 		tv_out.tv_usec = 0;
 		gettimeofday(&start_time, NULL);
 		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
