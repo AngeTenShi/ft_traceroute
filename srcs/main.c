@@ -72,14 +72,13 @@ char *create_icmp_packet(int sequence_number, int packet_size)
 	return (packet);
 }
 
-char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr, struct sockaddr_in *dest_addr)
+char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr)
 {
 	char *packet;
 	struct udphdr *udp;
 	packet = (char *)malloc(packet_size);
 	udp = (struct udphdr *)packet;
 	udp->source = src_addr->sin_port;
-	printf("port sent from src: %d\n", ntohs(udp->source));
 	udp->dest = htons(port);  
 	udp->len = htons(packet_size);
 	udp->check = 0;
@@ -104,7 +103,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = create_icmp_packet(i, 84);
 		else
 		{
-			packet = create_udp_packet(32, opts->port, traceroute_addr, traceroute_addr);
+			packet = create_udp_packet(32, opts->port, traceroute_addr);
 			packet_size = 40;
 		}
 		struct timeval tv_out;
