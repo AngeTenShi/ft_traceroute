@@ -163,7 +163,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 				gettimeofday(&end_time, NULL);
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
 				struct iphdr *ip_hdr = (struct iphdr *)p;
-				ip = inet_ntoa(*(struct in_addr *)&ip_hdr->saddr);
+				inet_ntop(AF_INET, &(ip_hdr->saddr), ip, INET_ADDRSTRLEN);
 				if (retry == 3)
 				{
 					if (opts->resolve_dns)
