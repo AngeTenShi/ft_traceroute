@@ -56,34 +56,11 @@ char *dns_lookup(char *addr, struct sockaddr_in *addr_con)
 	return (ret_buf);
 }
 
-char *create_icmp_packet(int sequence_number, int packet_size)
-{
-	char *packet;
-	struct icmphdr *icmp;
-	packet = (char *)malloc(packet_size);
-	icmp = (struct icmphdr *)packet;
-	icmp->type = ICMP_ECHO;
-	icmp->code = 0;
-	icmp->checksum = 0;
-	icmp->un.echo.sequence = sequence_number;
-	icmp->un.echo.id = getpid();
-	memset(packet + sizeof(struct icmphdr) , 'A', packet_size - sizeof(struct icmphdr));
-	icmp->checksum = checksum((unsigned short *)packet, packet_size);
-	return (packet);
-}
+
 
 char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr, struct sockaddr_in *dest_addr)
 {
-	char *packet;
-	struct udphdr *udp;
-	packet = (char *)malloc(packet_size);
-	udp = (struct udphdr *)packet;
-	udp->source = src_addr->sin_port;
-	udp->dest = rand() % 30000 + 30000;  
-	udp->len = htons(packet_size);
-	udp->check = 0;
-	memset(packet + sizeof(struct udphdr), 'A', packet_size - sizeof(struct udphdr));
-	return (packet);
+		
 }
 
 void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hostname, char *dest_ip, t_options *opts)
@@ -110,6 +87,10 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		tv_out.tv_sec = 5;
 		tv_out.tv_usec = 0;
 		gettimeofday(&start_time, NULL);
+		fd_set readfds;
+		FD_ZERO(&readfds);
+		FD_SET(socket_fd, &readfds);
+		int ret = select(socket_fd + 1, &readfds, NULL, NULL, &tv_out);
 		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
@@ -117,10 +98,6 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = NULL;
 			return;
 		}
-		fd_set readfds;
-		FD_ZERO(&readfds);
-		FD_SET(socket_fd, &readfds);
-		int ret = select(socket_fd + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
 			if (retry == 3)
