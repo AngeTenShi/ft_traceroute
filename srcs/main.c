@@ -60,7 +60,13 @@ char *dns_lookup(char *addr, struct sockaddr_in *addr_con)
 
 char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr, struct sockaddr_in *dest_addr)
 {
-		
+	char *packet = (char *)malloc(packet_size);
+	struct udphdr *udp_hdr = (struct udphdr *)packet;
+	udp_hdr->source = src_addr->sin_port;
+	udp_hdr->dest = dest_addr->sin_port;
+	udp_hdr->len = htons(packet_size);
+	udp_hdr->check = 0;
+	return (packet);
 }
 
 void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hostname, char *dest_ip, t_options *opts)
