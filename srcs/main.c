@@ -126,6 +126,7 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = create_icmp_packet(i, 84);
 		else
 		{
+			traceroute_addr->sin_port = htons(opts->port + i);
 			packet = create_udp_packet(60, opts->port + i, traceroute_addr, traceroute_addr);
 			packet_size = 60;
 		}
