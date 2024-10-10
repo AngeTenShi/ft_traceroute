@@ -79,8 +79,8 @@ char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr,
 	packet = (char *)malloc(packet_size);
 	memset(packet, 0, packet_size);
 	udp = (struct udphdr *)packet;
-	udp->source = port;
-	udp->dest = dest_addr->sin_port;
+	udp->source = htons(port);
+	udp->dest = htons(dest_addr->sin_port);
 	udp->len = htons(packet_size);
 	udp->check = 0;
 	struct pseudo_header
@@ -126,11 +126,11 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			packet = create_icmp_packet(i, 84);
 		else
 		{
-			packet = create_udp_packet(60, opts->port, traceroute_addr, traceroute_addr);
+			packet = create_udp_packet(60, opts->port + i, traceroute_addr, traceroute_addr);
 			packet_size = 60;
 		}
 		struct timeval tv_out;
-		tv_out.tv_sec = 3;
+		tv_out.tv_sec = 0;
 		tv_out.tv_usec = 0;
 		gettimeofday(&start_time, NULL);
 		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
