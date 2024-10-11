@@ -72,55 +72,60 @@ char *create_icmp_packet(int sequence_number, int packet_size)
 	return (packet);
 }
 
-char *create_udp_packet(int packet_size, int port, struct sockaddr_in *src_addr)
+char *create_udp_packet(int packet_size, int port, int ttl)
 {
 	char *packet;
 	struct udphdr *udp;
 	packet = (char *)malloc(packet_size);
 	udp = (struct udphdr *)packet;
-	udp->source = src_addr->sin_port;
-	udp->dest = htons(port);  
+	udp->dest = htons(port + ttl);
 	udp->len = htons(packet_size);
 	udp->check = 0;
 	memset(packet + sizeof(struct udphdr), 'A', packet_size - sizeof(struct udphdr));
 	return (packet);
 }
 
-void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hostname, char *dest_ip, t_options *opts)
+void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *traceroute_addr, char *hostname, char *dest_ip, t_options *opts)
 {
 	int i = 0;
 	char *packet = NULL;
 	int retry = 3;
-	int packet_size = 84;
-	char *p = NULL;
+	int packet_size = 64;
 	char ip[INET_ADDRSTRLEN];
 	struct timeval start_time, end_time;
+	int to_send = socket_icmp;
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
-		setsockopt(socket_fd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
+		int reached = 1;
+		setsockopt(socket_icmp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
+		setsockopt(socket_udp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 		if (opts->method == 0)
-			packet = create_icmp_packet(i, 84);
+			packet = create_icmp_packet(i, 64);
 		else
 		{
-			packet = create_udp_packet(32, opts->port, traceroute_addr);
+			packet = create_udp_packet(40, opts->port, ttl);
 			packet_size = 40;
 		}
 		struct timeval tv_out;
-		tv_out.tv_sec = 5;
+		tv_out.tv_sec = 3; // default timeout of 3 seconds in man
 		tv_out.tv_usec = 0;
 		gettimeofday(&start_time, NULL);
 		fd_set readfds;
 		FD_ZERO(&readfds);
-		FD_SET(socket_fd, &readfds);
-		int ret = select(socket_fd + 1, &readfds, NULL, NULL, &tv_out);
-		if (sendto(socket_fd, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
+		FD_SET(socket_icmp, &readfds);
+		setsockopt(socket_icmp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
+		setsockopt(socket_udp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
+		if (opts->method)
+			to_send = socket_udp;
+		if (sendto(to_send, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
 			free(packet);
 			packet = NULL;
 			return;
 		}
+		int ret = select(socket_icmp + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
 			if (retry == 3)
@@ -128,15 +133,17 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 			else
 				printf(" *");
 			fflush(stdout);
+			reached = 0;
 		}
 		else
 		{
-			if (FD_ISSET(socket_fd, &readfds))
+			if (FD_ISSET(socket_icmp, &readfds))
 			{
-				p = (char *)malloc(0x10000);
+				char p[65535];
 				struct sockaddr_in r_addr;
 				socklen_t addr_len = sizeof(r_addr);
-				recvfrom(socket_fd, p, 0x10000, 0, (struct sockaddr *)&r_addr, &addr_len);
+				size_t b_recv = recvfrom(socket_icmp, p, 65535, 0, (struct sockaddr *)&r_addr, &addr_len);
+				p[b_recv] = 0;
 				gettimeofday(&end_time, NULL);
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
 				struct iphdr *ip_hdr = (struct iphdr *)p;
@@ -155,8 +162,9 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 				}
 				else
 					printf("  %.3fms", rtt_msec);
-				free(p);
-				p = NULL;
+				struct icmphdr *icmp_hdr = (struct icmphdr *)(p + sizeof(struct iphdr));
+				if (icmp_hdr->type == ICMP_TIME_EXCEEDED)
+					reached = 0;
 			}
 		}
 		if (retry > 0)
@@ -168,10 +176,10 @@ void ft_traceroute(int socket_fd, struct sockaddr_in *traceroute_addr, char *hos
 		{
 			printf("\n");
 
-			if (strncmp(ip, dest_ip, strlen(dest_ip)) == 0)
+			if (reached)
 			{
 				free(packet);
-				FD_CLR(socket_fd, &readfds);
+				FD_CLR(to_send, &readfds);
 				packet = NULL;
 				break;
 			}
@@ -191,7 +199,8 @@ int main(int ac, char **av)
 	struct sockaddr_in addr_con;
 	char *ip_addr;
 	char *hostname;
-	int socket_fd = -1;
+	int socket_icmp = -1;
+	int socket_udp = -1;
 	if (ac < 2)
 	{
 		print_error("missing host operand");
@@ -213,11 +222,9 @@ int main(int ac, char **av)
 		return (1);
 	}
 
-	if (options->method == 1)
-		socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-	else
-		socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-	if (socket_fd < 0)
+	socket_udp = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+	socket_icmp = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+	if (socket_udp < 0 || socket_icmp < 0)
 	{
 		print_error("Lack of privileges");
 		free(ip_addr);
@@ -227,7 +234,7 @@ int main(int ac, char **av)
 	addr_con.sin_family = AF_INET;
 	addr_con.sin_port = htons(0);
 	addr_con.sin_addr.s_addr = inet_addr(ip_addr);
-	ft_traceroute(socket_fd, &addr_con, hostname, ip_addr, options);
+	ft_traceroute(socket_icmp, socket_udp, &addr_con, hostname, ip_addr, options);
 	free(ip_addr);
 	free(options);
 	return (0);
