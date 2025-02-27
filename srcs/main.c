@@ -95,11 +95,15 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 	struct timeval start_time, end_time;
 	int send_socket;
 	int recv_socket;
+	char seen_ip[INET_ADDRSTRLEN] = {0}; // Keep track of the IP we've seen in this TTL
 
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
 		int reached = 0;
+		memset(seen_ip, 0, INET_ADDRSTRLEN); // Reset for each new TTL
+		int first_response = 1; // Track if this is first response for current TTL
+
 		recv_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 		if (recv_socket < 0) {
 			print_error("Failed to create receive socket");
@@ -110,12 +114,10 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		setsockopt(socket_udp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 
 		if (opts->method == 0) {
-			// ICMP method
 			send_socket = socket_icmp;
 			packet = create_icmp_packet(i, 64);
 			packet_size = 64;
 		} else {
-			// UDP method
 			send_socket = socket_udp;
 			packet = create_udp_packet(40, opts->port, ttl);
 			packet_size = 40;
@@ -129,7 +131,6 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		FD_ZERO(&readfds);
 		FD_SET(recv_socket, &readfds);
 
-		// Set timeout for the new receive socket
 		setsockopt(recv_socket, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
 
 		if (sendto(send_socket, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
@@ -164,7 +165,6 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
 				struct iphdr *ip_hdr = (struct iphdr *)p;
 				inet_ntop(AF_INET, &(ip_hdr->saddr), ip, INET_ADDRSTRLEN);
-				int first_response = 1;
 
 				if (first_response)
 				{
