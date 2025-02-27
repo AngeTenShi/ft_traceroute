@@ -99,7 +99,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
-		int reached = 1;
+		int reached = 0; // Initialize to not reached
 
 		recv_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 		if (recv_socket < 0) {
@@ -142,7 +142,6 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 			return;
 		}
 
-		// Use the new socket for receiving
 		int ret = select(recv_socket + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
@@ -181,8 +180,16 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 				else
 					printf("  %.3fms", rtt_msec);
 				struct icmphdr *icmp_hdr = (struct icmphdr *)(p + sizeof(struct iphdr));
-				if (icmp_hdr->type == ICMP_TIME_EXCEEDED)
-					reached = 0;
+
+				// For ICMP method, final destination sends ICMP Echo Reply (type 0)
+				if (opts->method == 0 && icmp_hdr->type == ICMP_ECHOREPLY)
+					reached = 1;
+				// For UDP method, final destination sends ICMP Port Unreachable (type 3, code 3)
+				else if (opts->method == 1 && icmp_hdr->type == ICMP_DEST_UNREACH &&
+						 icmp_hdr->code == ICMP_PORT_UNREACH)
+					reached = 1;
+				else
+					reached = 0; // Not yet at final destination
 			}
 		}
 		if (retry > 0)
@@ -199,7 +206,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 				free(packet);
 				close(recv_socket);
 				packet = NULL;
-				break;
+				break; // Exit loop only when final destination is reached
 			}
 			retry = 3;
 			ttl++;
