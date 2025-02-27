@@ -94,11 +94,19 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 	char ip[INET_ADDRSTRLEN];
 	struct timeval start_time, end_time;
 	int send_socket;
+	int recv_socket;
 
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
 		int reached = 1;
+
+		recv_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+		if (recv_socket < 0) {
+			print_error("Failed to create receive socket");
+			return;
+		}
+
 		setsockopt(socket_icmp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 		setsockopt(socket_udp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 
@@ -120,20 +128,22 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		gettimeofday(&start_time, NULL);
 		fd_set readfds;
 		FD_ZERO(&readfds);
-		FD_SET(socket_icmp, &readfds);
-		setsockopt(socket_icmp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
-		setsockopt(socket_udp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
+		FD_SET(recv_socket, &readfds);
+
+		// Set timeout for the new receive socket
+		setsockopt(recv_socket, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
 
 		if (sendto(send_socket, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
 			free(packet);
 			packet = NULL;
+			close(recv_socket);
 			return;
-			}
+		}
 
-		// Always receive on ICMP socket (even for UDP method)
-		int ret = select(socket_icmp + 1, &readfds, NULL, NULL, &tv_out);
+		// Use the new socket for receiving
+		int ret = select(recv_socket + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
 			if (retry == 3)
@@ -145,12 +155,12 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		}
 		else
 		{
-			if (FD_ISSET(socket_icmp, &readfds))
+			if (FD_ISSET(recv_socket, &readfds))
 			{
 				char p[65535];
 				struct sockaddr_in r_addr;
 				socklen_t addr_len = sizeof(r_addr);
-				size_t b_recv = recvfrom(socket_icmp, p, 65535, 0, (struct sockaddr *)&r_addr, &addr_len);
+				size_t b_recv = recvfrom(recv_socket, p, 65535, 0, (struct sockaddr *)&r_addr, &addr_len);
 				p[b_recv] = 0;
 				gettimeofday(&end_time, NULL);
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
@@ -187,7 +197,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 			if (reached)
 			{
 				free(packet);
-				FD_CLR(send_socket, &readfds);
+				close(recv_socket);
 				packet = NULL;
 				break;
 			}
@@ -196,6 +206,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		}
 		free(packet);
 		packet = NULL;
+		close(recv_socket);
 		i++;
 	}
 }
