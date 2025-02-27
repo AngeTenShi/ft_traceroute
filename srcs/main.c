@@ -93,20 +93,27 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 	int packet_size = 64;
 	char ip[INET_ADDRSTRLEN];
 	struct timeval start_time, end_time;
-	int to_send = socket_icmp;
+	int send_socket;
+
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
 		int reached = 1;
 		setsockopt(socket_icmp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 		setsockopt(socket_udp, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
-		if (opts->method == 0)
+
+		if (opts->method == 0) {
+			// ICMP method
+			send_socket = socket_icmp;
 			packet = create_icmp_packet(i, 64);
-		else
-		{
+			packet_size = 64;
+		} else {
+			// UDP method
+			send_socket = socket_udp;
 			packet = create_udp_packet(40, opts->port, ttl);
 			packet_size = 40;
 		}
+
 		struct timeval tv_out;
 		tv_out.tv_sec = 3; // default timeout of 3 seconds in man
 		tv_out.tv_usec = 0;
@@ -116,15 +123,16 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		FD_SET(socket_icmp, &readfds);
 		setsockopt(socket_icmp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
 		setsockopt(socket_udp, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out));
-		if (opts->method)
-			to_send = socket_udp;
-		if (sendto(to_send, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
+
+		if (sendto(send_socket, packet, packet_size, 0, (struct sockaddr *)traceroute_addr, sizeof(*traceroute_addr)) <= 0)
 		{
 			print_error("sendto failed");
 			free(packet);
 			packet = NULL;
 			return;
-		}
+			}
+
+		// Always receive on ICMP socket (even for UDP method)
 		int ret = select(socket_icmp + 1, &readfds, NULL, NULL, &tv_out);
 		if (ret == 0)
 		{
@@ -179,7 +187,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 			if (reached)
 			{
 				free(packet);
-				FD_CLR(to_send, &readfds);
+				FD_CLR(send_socket, &readfds);
 				packet = NULL;
 				break;
 			}

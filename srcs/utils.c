@@ -2,7 +2,15 @@
 
 void print_usage(void)
 {
-
+    printf("Usage:\n");
+    printf("  traceroute [options] <destination>\n\n");
+    printf("Options:\n");
+    printf("  -f <first_ttl>         Set the first TTL value (1-255, default: 1)\n");
+    printf("  -m <max_hops>          Set the maximum number of hops (1-255, default: 64)\n");
+    printf("  -p <port>              Set the destination port (1-65535, default: 33434)\n");
+    printf("  -M <method>            Set the probe method (icmp or udp, default: icmp)\n");
+    printf("  --resolve-hostnames    Resolve IP addresses to hostnames\n");
+    printf("  --help                 Display this help and exit\n");
 }
 
 void parse_args(int ac, char **av, t_options *options)
