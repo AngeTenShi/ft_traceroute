@@ -99,8 +99,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 	printf("traceroute to %s (%s), %d hops max\n", hostname, dest_ip, opts->max_hops);
 	for (int ttl = opts->first_ttl; ttl <= opts->max_hops; ttl++)
 	{
-		int reached = 0; // Initialize to not reached
-
+		int reached = 0;
 		recv_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 		if (recv_socket < 0) {
 			print_error("Failed to create receive socket");
@@ -123,7 +122,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 		}
 
 		struct timeval tv_out;
-		tv_out.tv_sec = 3; // default timeout of 3 seconds in man
+		tv_out.tv_sec = 1;
 		tv_out.tv_usec = 0;
 		gettimeofday(&start_time, NULL);
 		fd_set readfds;
@@ -170,8 +169,13 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 					if (opts->resolve_dns)
 					{
 						char *temp_host = reverse_dns_lookup(inet_ntoa(r_addr.sin_addr));
-						printf("  %d   %s (%s)  %.3fms", ttl, ip, temp_host, rtt_msec);
-						free(temp_host);
+						if (temp_host)
+						{
+							printf("  %d   %s (%s)  %.3fms", ttl, ip, temp_host, rtt_msec);
+							free(temp_host);
+						}
+						else
+							printf("  %d   %s (%s) %.3fms", ttl, ip, ip, rtt_msec);
 					}
 					else
 						printf("  %d   %s  %.3fms", ttl, ip, rtt_msec);

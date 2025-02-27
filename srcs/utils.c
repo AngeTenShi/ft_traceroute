@@ -121,7 +121,7 @@ t_options *init_options()
 	options->first_ttl = 1;
 	options->max_hops = 64;
 	options->port = 33434;
-	options->method = 0;
+	options->method = 1; // default is UDP
 	options->resolve_dns = 0;
 	return (options);
 }
