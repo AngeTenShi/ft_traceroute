@@ -171,7 +171,7 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 						char *temp_host = reverse_dns_lookup(inet_ntoa(r_addr.sin_addr));
 						if (temp_host)
 						{
-							printf("  %d   %s (%s)  %.3fms", ttl, ip, temp_host, rtt_msec);
+							printf("  %d   %s (%s)  %.3fms", ttl, temp_host, ip, rtt_msec);
 							free(temp_host);
 						}
 						else
