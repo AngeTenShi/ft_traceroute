@@ -164,7 +164,9 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 				double rtt_msec = (end_time.tv_sec - start_time.tv_sec) * 1000.0 + (end_time.tv_usec - start_time.tv_usec) / 1000.0;
 				struct iphdr *ip_hdr = (struct iphdr *)p;
 				inet_ntop(AF_INET, &(ip_hdr->saddr), ip, INET_ADDRSTRLEN);
-				if (retry == 3)
+				int first_response = 1;
+
+				if (first_response)
 				{
 					if (opts->resolve_dns)
 					{
@@ -175,14 +177,20 @@ void ft_traceroute(int socket_icmp, int socket_udp, struct sockaddr_in *tracerou
 							free(temp_host);
 						}
 						else
-							printf("  %d   %s (%s) %.3fms", ttl, ip, ip, rtt_msec);
+							printf("  %d   %s  %.3fms", ttl, ip, rtt_msec);
 					}
 					else
 						printf("  %d   %s  %.3fms", ttl, ip, rtt_msec);
+
+					first_response = 0;
 					fflush(stdout);
 				}
 				else
 					printf("  %.3fms", rtt_msec);
+
+				// Reset first_response when moving to next TTL
+				if (retry == 0)
+					first_response = 1;
 				struct icmphdr *icmp_hdr = (struct icmphdr *)(p + sizeof(struct iphdr));
 
 				// For ICMP method, final destination sends ICMP Echo Reply (type 0)
